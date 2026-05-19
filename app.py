@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from serpapi import GoogleSearch
 from dotenv import load_dotenv
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -18,13 +19,38 @@ app.add_middleware(
 )
 
 api_key = os.getenv("OPENAI_API_KEY")
-print(api_key)
 
 llm = ChatOpenAI(
     api_key=api_key,
     model="gpt-3.5-turbo",
     temperature=0.7
 )
+def search_laptops(query):
+    params = {
+    "engine": "google_shopping",
+    "q": query,
+    "location": "United States",
+    "hl": "en",
+    "gl": "us",
+    "api_key": os.getenv("SERPAPI_API_KEY")
+    }
+    search = GoogleSearch(params)
+    results = search.get_dict()
+    print(results)
+
+    shopping_results = results.get("shopping_results", [])
+
+    laptops = []
+
+    for item in shopping_results[:5]:
+        laptops.append({
+            "title": item.get("title"),
+            "price": item.get("price"),
+            "rating": item.get("rating"),
+            "link": item.get("product_link")
+        })
+
+    return laptops
 
 class ChatRequest(BaseModel):
     message: str
@@ -36,6 +62,7 @@ def home():
 @app.post("/chat")
 def chat(req: ChatRequest):
     user_input = req.message.lower()
+    retrieved_laptops = search_laptops(user_input)
 
     laptop_keywords = [
         "laptop", "macbook", "notebook", "ultrabook",
@@ -50,6 +77,13 @@ def chat(req: ChatRequest):
         return {
             "response": "I can only help with laptop-related questions."
         }
+    context = "\n".join([
+    f"{l['title']} | {l['price']} | Rating: {l['rating']} | {l['link']}"
+    for l in retrieved_laptops
+    ])
+    if not context:
+        context = "No live laptop data found."
+
 
     prompt = f"""
 You are LaptopAI, a premium laptop recommendation assistant.
@@ -89,7 +123,11 @@ $2500-$3000
 
 Now answer the user's question.
 
-User Question:
+Use the retrieved laptop data below while answering.
+
+Retrieved Laptop Data:
+{context}
+
 {req.message}
 """
 
