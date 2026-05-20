@@ -1,3 +1,4 @@
+from urllib import response
 from fastapi import FastAPI
 from serpapi import GoogleSearch
 from dotenv import load_dotenv
@@ -47,7 +48,8 @@ def search_laptops(query):
             "title": item.get("title"),
             "price": item.get("price"),
             "rating": item.get("rating"),
-            "link": item.get("product_link")
+            "link": item.get("product_link"),
+            "thumbnail": item.get("thumbnail")
         })
 
     return laptops
@@ -77,10 +79,17 @@ def chat(req: ChatRequest):
         return {
             "response": "I can only help with laptop-related questions."
         }
-    context = "\n".join([
-    f"{l['title']} | {l['price']} | Rating: {l['rating']} | {l['link']}"
+    context = "\n\n".join([
+    f"""
+     ### {l['title']}
+
+     - Price: {l['price']}
+     - Rating: {l['rating']}
+
+     <a href="{l['link']}" target="_blank">Buy Here</a>
+    """
     for l in retrieved_laptops
-    ])
+   ])
     if not context:
         context = "No live laptop data found."
 
@@ -98,6 +107,12 @@ VERY IMPORTANT FORMATTING RULES:
 - Every heading MUST start on a new line.
 - Use bullet points for specs.
 - Keep responses visually clean and easy to read.
+- Always provide clickable markdown links.
+
+Provide:
+- best recommendations
+- concise explanations
+- clickable markdown links
 
 Example format:
 
@@ -133,4 +148,7 @@ Retrieved Laptop Data:
 
     response = llm.invoke(prompt).content
 
-    return {"response": response}
+    return {
+    "response": response,
+    "products": retrieved_laptops
+}
