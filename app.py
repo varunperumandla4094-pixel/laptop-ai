@@ -4,6 +4,8 @@ from serpapi import GoogleSearch
 from dotenv import load_dotenv
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from openai import OpenAI
+from fastapi.responses import StreamingResponse
 from langchain_openai import ChatOpenAI
 import os
 
@@ -20,6 +22,7 @@ app.add_middleware(
 )
 
 api_key = os.getenv("OPENAI_API_KEY")
+client = OpenAI(api_key=api_key)
 
 llm = ChatOpenAI(
     api_key=api_key,
@@ -53,6 +56,25 @@ def search_laptops(query):
         })
 
     return laptops
+
+def generate_stream(prompt):
+
+    stream = client.chat.completions.create(
+        model="gpt-3.5-turbo",
+        messages=[
+            {
+                "role": "user",
+                "content": prompt
+            }
+        ],
+        stream=True
+    )
+
+    for chunk in stream:
+        content = chunk.choices[0].delta.content
+
+        if content:
+            yield content
 
 class ChatRequest(BaseModel):
     message: str
@@ -152,3 +174,18 @@ Retrieved Laptop Data:
     "response": response,
     "products": retrieved_laptops
 }
+
+@app.post("/stream-chat")
+def stream_chat(req: ChatRequest):
+
+    prompt = f"""
+    You are LaptopAI.
+
+    User Question:
+    {req.message}
+    """
+
+    return StreamingResponse(
+        generate_stream(prompt),
+        media_type="text/plain"
+    )
