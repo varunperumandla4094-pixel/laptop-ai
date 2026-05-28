@@ -1,3 +1,4 @@
+import json
 from urllib import response
 from fastapi import FastAPI
 from serpapi import GoogleSearch
@@ -8,6 +9,8 @@ from openai import OpenAI
 from fastapi.responses import StreamingResponse
 from langchain_openai import ChatOpenAI
 import os
+
+from typer import prompt
 
 load_dotenv(override=True)
 
@@ -74,7 +77,10 @@ def generate_stream(prompt):
         content = chunk.choices[0].delta.content
 
         if content:
-            yield content
+            yield json.dumps({
+            "type": "token",
+            "content": content
+        }) + "\n"
 
 class ChatRequest(BaseModel):
     message: str
@@ -178,14 +184,54 @@ Retrieved Laptop Data:
 @app.post("/stream-chat")
 def stream_chat(req: ChatRequest):
 
-    prompt = f"""
-    You are LaptopAI.
+    retrieved_laptops = search_laptops(req.message)
 
-    User Question:
-    {req.message}
-    """
+    context = "\n".join([
+
+        f"""
+        Title: {l['title']}
+        Price: {l['price']}
+        Rating: {l['rating']}
+        Link: {l['link']}
+        """
+
+        for l in retrieved_laptops
+
+    ])
+
+    prompt = f"""
+You are LaptopAI, an expert laptop recommendation assistant.
+
+Use the retrieved laptop data below while answering.
+
+Retrieved Laptop Data:
+{context}
+
+Instructions:
+- Recommend laptops based on the user's needs
+- Mention price and ratings
+- Mention product links naturally
+- Keep answers clean and structured
+
+User Question:
+{req.message}
+"""
+
+    def event_generator():
+
+        for chunk in generate_stream(prompt):
+            yield chunk
+
+        yield json.dumps({
+            "type": "products",
+            "items": retrieved_laptops
+        }) + "\n"
+
+        yield json.dumps({
+            "type": "done"
+        }) + "\n"
 
     return StreamingResponse(
-        generate_stream(prompt),
+        event_generator(),
         media_type="text/plain"
     )
